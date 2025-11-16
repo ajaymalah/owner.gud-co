@@ -1,18 +1,21 @@
-import { useRouter } from "next/router"
+"use client"
+
+
 import { Card, CardHeader, CardContent } from "@/components/ui/card"
 
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
+import { useRouter } from "next/navigation"
 
 
 export default function ProjectDetails() {
   const router = useRouter()
-  const { slug } = router.query
+  // const { slug } = router.query
 
   return (
     <section className="p-8">
       <Card>
-        <CardHeader>Project: {slug}</CardHeader>
+        <CardHeader>Project: {""}</CardHeader>
         <CardContent>
           <p>Detailed description, images, process, and results of this project.</p>
         </CardContent>
