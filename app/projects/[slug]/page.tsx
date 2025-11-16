@@ -5,11 +5,11 @@ import { Card, CardHeader, CardContent } from "@/components/ui/card"
 
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { useRouter } from "next/navigation"
+
 
 
 export default function ProjectDetails() {
-  const router = useRouter()
+
   // const { slug } = router.query
 
   return (

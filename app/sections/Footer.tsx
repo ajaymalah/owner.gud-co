@@ -1,3 +1,5 @@
+"use client"
+
 export default function Footer() {
   return (
     <div className="h-screen w-screen relative flex items-end justify-start pb-20 pl-20">

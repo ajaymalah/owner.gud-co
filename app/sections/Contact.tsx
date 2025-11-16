@@ -1,3 +1,5 @@
+"use client"
+
 export default function Contact() {
   return (
     <div className=" h-screen flex flex-col justify-center items-center  w-full bg-gray-50 px-4">

@@ -1,3 +1,5 @@
+"use client"
+
 import { CardHeader } from "@/components/ui/card";
 import RollCard from "@/components/ui/roll-card";
 import SectionComponent from "@/components/ui/section-component";

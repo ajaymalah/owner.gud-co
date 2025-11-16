@@ -1,3 +1,5 @@
+"use client"
+
 import SectionComponent from "@/components/ui/section-component";
 
 export default function About() {

@@ -1,3 +1,5 @@
+"use client"
+
 import OutsideWork from "@/components/ui/outside-work";
 import SectionComponent from "@/components/ui/section-component";
 
