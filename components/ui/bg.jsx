@@ -1,118 +1,152 @@
-"use client"; // if using Next.js 13+
-
+"use client";
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
-import { CCDIKSolver, CCDIKHelper } from "three/addons/animation/CCDIKSolver.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 
-export default function Background3D() {
-  const mountRef = useRef();
+export default function HeroBackground3D() {
+  const mountRef = useRef(null);
+  const characterRef = useRef(null);
+  const mixerRef = useRef(null);
+  const planetsRef = useRef([]);
+  const skills = useRef([
+    "Spring Boot", "Flutter", "NestJS", "React", "GitHub",
+    "Microservices",  "Bloc", ,
+  ]);
+
+  const createPlanetTexture = (text) => {
+    const size = 256;
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+
+    const grad = ctx.createRadialGradient(size/2, size/2, 10, size/2, size/2, size/2);
+    grad.addColorStop(0, "rgba(255,200,100,0.9)");
+    grad.addColorStop(1, "rgba(255,120,50,0.3)");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(size/2, size/2, size/2, 0, Math.PI*2);
+    ctx.fill();
+
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 36px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, size/2, size/2);
+
+    return new THREE.CanvasTexture(canvas);
+  };
 
   useEffect(() => {
-    let scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0xffffff, 0.17);
-    scene.background = new THREE.Color(0xffffff);
+    const mount = mountRef.current;
+    const scene = new THREE.Scene();
+    // Remove background color so page theme shows through
+    // scene.background = new THREE.Color(0x000000);
 
-    let camera = new THREE.PerspectiveCamera(
-      55,
-      window.innerWidth / window.innerHeight,
-      0.001,
-      5000
-    );
-    camera.position.set(0.97, 1.1, 0.73);
-    camera.lookAt(scene.position);
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 100);
+    camera.position.set(0, 0.5, 6);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setClearColor(0x000000, 0); // transparent background
-    mountRef.current.appendChild(renderer.domElement);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    mount.appendChild(renderer.domElement);
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 8);
-    scene.add(ambientLight);
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.enablePan = false;
+    controls.enableRotate = false;
 
-    const orbitControls = new OrbitControls(camera, renderer.domElement);
-    orbitControls.enableDamping = true;
-    orbitControls.enableZoom = false;
-    orbitControls.enablePan = false;
-    orbitControls.enabled = false; // optional: background moves automatically only
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x222222, 1.2));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+    dirLight.position.set(3, 6, 5);
+    scene.add(dirLight);
+    const fillLight = new THREE.PointLight(0xffffff, 0.4);
+    fillLight.position.set(-3, 2, -2);
+    scene.add(fillLight);
 
-    const OOI = {};
-    let IKSolver;
-    const v0 = new THREE.Vector3();
+    const loader = new GLTFLoader();
+    loader.load("/models/char.glb", (gltf) => {
+      const character = gltf.scene;
+      characterRef.current = character;
+      character.position.y = 0;
+      scene.add(character);
 
-    const dracoLoader = new DRACOLoader();
-    dracoLoader.setDecoderPath("jsm/libs/draco/");
-    const gltfLoader = new GLTFLoader();
-    gltfLoader.setDRACOLoader(dracoLoader);
+      const mixer = new THREE.AnimationMixer(character);
+      mixerRef.current = mixer;
 
-    gltfLoader.load("models/gltf/kira.glb", (gltf) => {
-      gltf.scene.traverse((n) => {
-        if (n.name === "head") OOI.head = n;
-        if (n.name === "lowerarm_l") OOI.lowerarm_l = n;
-        if (n.name === "Upperarm_l") OOI.Upperarm_l = n;
-        if (n.name === "hand_l") OOI.hand_l = n;
-        if (n.name === "target_hand_l") OOI.target_hand_l = n;
-        if (n.name === "boule") OOI.sphere = n;
-        if (n.name === "Kira_Shirt_left") OOI.kira = n;
-      });
-      scene.add(gltf.scene);
-
-      // IK setup
-      const iks = [
-        {
-          target: 22,
-          effector: 6,
-          links: [
-            {
-              index: 5,
-              rotationMin: new THREE.Vector3(1.2, -1.8, -0.4),
-              rotationMax: new THREE.Vector3(1.7, -1.1, 0.3),
-            },
-            {
-              index: 4,
-              rotationMin: new THREE.Vector3(0.1, -0.7, -1.8),
-              rotationMax: new THREE.Vector3(1.1, 0, -1.4),
-            },
-          ],
-        },
-      ];
-      IKSolver = new CCDIKSolver(OOI.kira, iks);
-      const helper = new CCDIKHelper(OOI.kira, iks, 0.01);
-      scene.add(helper);
+      const fly = gltf.animations.find(a => a.name.toLowerCase() === "fly-state");
+      if(fly){
+        const flyAction = mixer.clipAction(fly);
+        flyAction.setLoop(THREE.LoopRepeat);
+        flyAction.play();
+      }
     });
 
-    // Animate
+    const createPlanets = () => {
+      planetsRef.current.forEach(p => scene.remove(p));
+      planetsRef.current = [];
+      const orbitRadius = 1.2;
+      skills.current.forEach((skill, i) => {
+        const geometry = new THREE.SphereGeometry(0.12, 32, 32);
+        const texture = createPlanetTexture(skill);
+        const material = new THREE.MeshPhysicalMaterial({
+          map: texture,
+          transparent: true,
+          opacity: 1,
+          roughness: 0.2,
+          metalness: 0.1,
+          transmission: 0.6,
+          clearcoat: 0.5
+        });
+        const planet = new THREE.Mesh(geometry, material);
+        planet.userData = {
+          angle: (i / skills.current.length) * Math.PI * 2,
+          radius: orbitRadius,
+          speed: 0.15 + i * 0.005,
+          state: "orbit"
+        };
+        scene.add(planet);
+        planetsRef.current.push(planet);
+      });
+    };
+    createPlanets();
+
+    const clock = new THREE.Clock();
     const animate = () => {
-      requestAnimationFrame(animate);
-      if (OOI.sphere && OOI.head) {
-        OOI.sphere.getWorldPosition(v0);
-        OOI.head.lookAt(v0);
-        OOI.head.rotation.set(
-          OOI.head.rotation.x,
-          OOI.head.rotation.y + Math.PI,
-          OOI.head.rotation.z
-        );
+      const delta = clock.getDelta();
+
+      if(characterRef.current){
+        const t = Date.now()*0.001;
+        characterRef.current.position.y = Math.sin(t*1.5)*0.05;
       }
-      if (IKSolver) IKSolver.update();
+
+      planetsRef.current.forEach(planet => {
+        planet.userData.angle += planet.userData.speed * delta;
+        const x = Math.cos(planet.userData.angle) * planet.userData.radius;
+        const z = Math.sin(planet.userData.angle) * planet.userData.radius;
+        planet.position.set(x, 0.5, z);
+      });
+
+      mixerRef.current?.update(delta);
       renderer.render(scene, camera);
+      requestAnimationFrame(animate);
     };
     animate();
 
-    const onResize = () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
+    const handleResize = () => {
+      camera.aspect = window.innerWidth/window.innerHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     };
-    window.addEventListener("resize", onResize);
+    window.addEventListener("resize", handleResize);
 
     return () => {
-      window.removeEventListener("resize", onResize);
-      mountRef.current.removeChild(renderer.domElement);
+      window.removeEventListener("resize", handleResize);
+      mount.removeChild(renderer.domElement);
     };
   }, []);
 
-  return <div ref={mountRef} className="fixed top-0 left-0 w-screen h-screen -z-10" />;
+  return <div ref={mountRef} className="absolute inset-0 -z-10"/>;
 }

@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import ClientWrapper from "./sections/them-wrapper";
+import BubbleMenu from "@/components/ui/bubble-menu";
+import { ThemeProvider } from "@/components/ui/theme-provider";
 
+import LeftSidebar from "@/components/ui/left-sidebar";
 
 export const metadata: Metadata = {
   title: "Create Next App",
@@ -14,10 +17,28 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html  lang="en"
-  suppressHydrationWarning>
-      <body>
-        <ClientWrapper>{children}</ClientWrapper>
+    <html lang="en" suppressHydrationWarning>
+      <body className="bg-background text-foreground">
+
+
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <ClientWrapper>
+            <div className="relative max-w-5xl mx-auto px-4">
+              {/* Bubble menu fixed relative to layout */}
+              <BubbleMenu />
+              
+              {/* Main content */}
+              {children}
+              <LeftSidebar/>
+            </div>
+          </ClientWrapper>
+        </ThemeProvider>
+
       </body>
     </html>
   );

@@ -1,24 +1,24 @@
-"use client"
-import Logo from "@/lib/constants/images/logo"
-import Image from "next/image"
+"use client";
+import Logo from "@/lib/constants/images/logo";
+import Image from "next/image";
 import { gsap } from "gsap";
 import { useEffect } from "react";
-import { useTheme } from "next-themes";
-import { getSystemTheme } from "@/lib/helper/getTheme";
+import HeroBackground3D from "@/components/ui/bg";
+import { ModeToggle } from "@/components/ui/mode-toggle";
+import { useTheme } from "next-themes"; // <-- use next-themes
 
 export default function Hero() {
+  const { theme, resolvedTheme } = useTheme(); // current theme
 
   useEffect(() => {
-  
     gsap.from("#logo", {
       opacity: 0,
       y: -20,
       duration: 0.8,
       ease: "power3.out",
-      delay: 0.2
+      delay: 0.2,
     });
 
-    
     const items = gsap.utils.toArray("#owner > *");
 
     gsap.from(items, {
@@ -26,25 +26,21 @@ export default function Hero() {
       opacity: 0,
       duration: 1,
       ease: "power3.out",
-      stagger: 0.25,   
+      stagger: 0.25,
       delay: 0.5,
     });
   }, []);
 
-  return (
-    <div className="h-screen w-screen relative flex items-end justify-start pb-20 pl-20">
-      
-      {/* Animated Theme Logo */}
-      <div id="logo" className="absolute top-12 left-20">
-        <Image
-          src={ getSystemTheme() ? Logo.light : Logo.dark}
-          alt="logo"
-          width={120}
-          height={20}
-        />
-      </div>
+  const currentTheme = theme === "system" ? resolvedTheme : theme;
 
-      <div id="owner" className="relative z-10 space-y-4">
+  return (
+    <div className="h-screen w-screen relative bg-transparent overflow-hidden">
+      {/* 3D background */}
+      <HeroBackground3D />
+
+
+      {/* Hero content at bottom-left */}
+      <div className="absolute bottom-20 left-20 z-10 space-y-4">
         <p className="text-lg uppercase text-gray-300 -mb-1">
           Product Designer & Developer
         </p>
@@ -56,5 +52,5 @@ export default function Hero() {
         </p>
       </div>
     </div>
-  )
+  );
 }
