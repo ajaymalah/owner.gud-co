@@ -18,14 +18,14 @@ export default function LeftSidebar() {
   return (
     <div className=" hidden md:flex fixed top-1/2 left-8 -translate-y-1/2  flex-col items-center z-50 space-y-8">
       {/* Logo rotated */}
-      <div className="rotate-90">
+      {/* <div className="rotate-90">
         <Image
           src={currentTheme !== "dark" ? Logo.dark : Logo.light}
           alt="logo"
           width={120}
           height={20}
         />
-      </div>
+      </div> */}
       
       <div className="h-2">
         

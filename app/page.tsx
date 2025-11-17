@@ -11,7 +11,7 @@ export default function Home() {
   return (
     <div
       id="scroll-container"
-      className="h-screen max-w-7xl mx-auto overflow-y-scroll snap-y snap-mandatory scroll-smooth"
+      className="h-screen max-w-7xl mx-auto snap-y snap-mandatory overflow-y-auto scrollbar-hide scroll-smooth"
     >
       <section id="hero" className="snap-start min-h-screen w-full"><Hero /></section>
       <section id="about" className="snap-start min-h-screen w-full"><About /></section>
@@ -20,5 +20,6 @@ export default function Home() {
       <section id="contact" className="snap-start min-h-screen w-full"><Contact /></section>
       <section id="footer" className="snap-start min-h-screen w-full"><Footer /></section>
     </div>
+
   );
 }

@@ -3,8 +3,6 @@ import Logo from "@/lib/constants/images/logo";
 import Image from "next/image";
 import { gsap } from "gsap";
 import { useEffect } from "react";
-import HeroBackground3D from "@/components/ui/bg";
-import { ModeToggle } from "@/components/ui/mode-toggle";
 import { useTheme } from "next-themes"; // <-- use next-themes
 
 export default function Hero() {
@@ -34,10 +32,7 @@ export default function Hero() {
   const currentTheme = theme === "system" ? resolvedTheme : theme;
 
   return (
-    <div className="h-screen w-screen relative bg-transparent overflow-hidden">
-      {/* 3D background */}
-      <HeroBackground3D />
-
+    <div className="h-screen w-[70vw] relative bg-transparent overflow-hidden">
 
       {/* Hero content at bottom-left */}
       <div className="absolute bottom-20 left-20 z-10 space-y-4">

@@ -1,152 +1,209 @@
 "use client";
+
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { useGLTF, useAnimations } from "@react-three/drei";
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 
-export default function HeroBackground3D() {
-  const mountRef = useRef(null);
-  const characterRef = useRef(null);
-  const mixerRef = useRef(null);
-  const planetsRef = useRef([]);
-  const skills = useRef([
-    "Spring Boot", "Flutter", "NestJS", "React", "GitHub",
-    "Microservices",  "Bloc", ,
-  ]);
+function Character() {
+  const group = useRef();
+  const { scene, animations } = useGLTF("/models/char.glb");
+  const { actions } = useAnimations(animations, group);
 
-  const createPlanetTexture = (text) => {
-    const size = 256;
-    const canvas = document.createElement("canvas");
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext("2d");
+  const idleAnimations = ["stand1", "stand2", "stand3"];
+  const meleeAnimations = ["malee1", "malee1upper", "malee2"];
+  const currentAction = useRef(null);
+  const isDead = useRef(false);
+  const isIdle = useRef(false);
 
-    const grad = ctx.createRadialGradient(size/2, size/2, 10, size/2, size/2, size/2);
-    grad.addColorStop(0, "rgba(255,200,100,0.9)");
-    grad.addColorStop(1, "rgba(255,120,50,0.3)");
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.arc(size/2, size/2, size/2, 0, Math.PI*2);
-    ctx.fill();
+  const modelScale = useRef(200);
+  const originalPos = new THREE.Vector3(0, -1, 0);
+  const lastMoveTime = useRef(Date.now());
+  const targetPos = useRef(originalPos.clone());
+  const defaultRotation = new THREE.Euler(0, 0, 0);
 
-    ctx.fillStyle = "#fff";
-    ctx.font = "bold 36px Arial";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(text, size/2, size/2);
+  const idleIndex = useRef(0); // tracks idle animation
+  const meleeIndex = useRef(0); // tracks melee animation
+  let idleTimeout = useRef(null);
 
-    return new THREE.CanvasTexture(canvas);
+  // Switch animation
+  const switchAnimation = (name, { clamp = false, duration = null, onFinish } = {}) => {
+    if (!actions || isDead.current) return;
+    if (currentAction.current === name) return;
+
+    if (currentAction.current) actions[currentAction.current]?.fadeOut(0.3);
+
+    const action = actions[name];
+    if (!action) return;
+
+    action.reset().fadeIn(0.3).play();
+    action.loop = clamp ? THREE.LoopOnce : THREE.LoopRepeat;
+
+    currentAction.current = name;
+
+    if (duration) {
+      if (idleTimeout.current) clearTimeout(idleTimeout.current);
+      idleTimeout.current = setTimeout(() => {
+        if (onFinish) onFinish();
+      }, duration);
+    }
   };
 
-  useEffect(() => {
-    const mount = mountRef.current;
-    const scene = new THREE.Scene();
-    // Remove background color so page theme shows through
-    // scene.background = new THREE.Color(0x000000);
+  // Sequential idle
+  const playNextIdle = () => {
+    if (isDead.current || isIdle.current) return;
 
-    const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 100);
-    camera.position.set(0, 0.5, 6);
+    isIdle.current = true;
+    modelScale.current = 150;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
-    mount.appendChild(renderer.domElement);
+    const next = idleAnimations[idleIndex.current];
+    idleIndex.current = (idleIndex.current + 1) % idleAnimations.length;
 
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.05;
-    controls.enablePan = false;
-    controls.enableRotate = false;
-
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x222222, 1.2));
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
-    dirLight.position.set(3, 6, 5);
-    scene.add(dirLight);
-    const fillLight = new THREE.PointLight(0xffffff, 0.4);
-    fillLight.position.set(-3, 2, -2);
-    scene.add(fillLight);
-
-    const loader = new GLTFLoader();
-    loader.load("/models/char.glb", (gltf) => {
-      const character = gltf.scene;
-      characterRef.current = character;
-      character.position.y = 0;
-      scene.add(character);
-
-      const mixer = new THREE.AnimationMixer(character);
-      mixerRef.current = mixer;
-
-      const fly = gltf.animations.find(a => a.name.toLowerCase() === "fly-state");
-      if(fly){
-        const flyAction = mixer.clipAction(fly);
-        flyAction.setLoop(THREE.LoopRepeat);
-        flyAction.play();
-      }
+    switchAnimation(next, {
+      clamp: false,
+      duration: 5000,
+      onFinish: () => {
+        isIdle.current = false;
+        playNextIdle(); // continue idle loop
+      },
     });
+  };
 
-    const createPlanets = () => {
-      planetsRef.current.forEach(p => scene.remove(p));
-      planetsRef.current = [];
-      const orbitRadius = 1.2;
-      skills.current.forEach((skill, i) => {
-        const geometry = new THREE.SphereGeometry(0.12, 32, 32);
-        const texture = createPlanetTexture(skill);
-        const material = new THREE.MeshPhysicalMaterial({
-          map: texture,
-          transparent: true,
-          opacity: 1,
-          roughness: 0.2,
-          metalness: 0.1,
-          transmission: 0.6,
-          clearcoat: 0.5
-        });
-        const planet = new THREE.Mesh(geometry, material);
-        planet.userData = {
-          angle: (i / skills.current.length) * Math.PI * 2,
-          radius: orbitRadius,
-          speed: 0.15 + i * 0.005,
-          state: "orbit"
-        };
-        scene.add(planet);
-        planetsRef.current.push(planet);
-      });
+  const playRun = () => {
+    modelScale.current = 40;
+    isIdle.current = false;
+    switchAnimation("run");
+  };
+
+  // Sequential melee on every click
+  const playNextMelee = () => {
+    if (isDead.current) return;
+
+    isIdle.current = false;
+    modelScale.current = 40;
+
+    const next = meleeAnimations[meleeIndex.current];
+    meleeIndex.current = (meleeIndex.current + 1) % meleeAnimations.length;
+
+    switchAnimation(next, { clamp: true, duration: 5000, onFinish: playNextIdle });
+  };
+
+  const playDeath = () => {
+    if (isDead.current) return;
+    isIdle.current = false;
+    switchAnimation("death", { clamp: true, duration: 5000, onFinish: playNextIdle });
+    isDead.current = true;
+  };
+
+  // Mouse tracking
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      const x = (e.clientX / window.innerWidth) * 10 - 5;
+      const y = -(e.clientY / window.innerHeight) * 6 + 3;
+      targetPos.current.set(x, -1 + y, 0);
+      lastMoveTime.current = Date.now();
     };
-    createPlanets();
 
-    const clock = new THREE.Clock();
-    const animate = () => {
-      const delta = clock.getDelta();
+    window.addEventListener("mousemove", handleMouseMove);
+    return () => window.removeEventListener("mousemove", handleMouseMove);
+  }, []);
 
-      if(characterRef.current){
-        const t = Date.now()*0.001;
-        characterRef.current.position.y = Math.sin(t*1.5)*0.05;
+  // Idle timer: return to original position if no movement
+  useEffect(() => {
+    const checkIdle = () => {
+      const now = Date.now();
+      if (!isDead.current && now - lastMoveTime.current > 3000) {
+        targetPos.current.copy(originalPos);
       }
-
-      planetsRef.current.forEach(planet => {
-        planet.userData.angle += planet.userData.speed * delta;
-        const x = Math.cos(planet.userData.angle) * planet.userData.radius;
-        const z = Math.sin(planet.userData.angle) * planet.userData.radius;
-        planet.position.set(x, 0.5, z);
-      });
-
-      mixerRef.current?.update(delta);
-      renderer.render(scene, camera);
-      requestAnimationFrame(animate);
+      requestAnimationFrame(checkIdle);
     };
-    animate();
+    checkIdle();
+  }, []);
 
-    const handleResize = () => {
-      camera.aspect = window.innerWidth/window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-    };
-    window.addEventListener("resize", handleResize);
+  // Click handler: melee animation
+  useEffect(() => {
+    const handleClick = () => playNextMelee();
+    const handleDoubleClick = () => playDeath();
+
+    window.addEventListener("click", handleClick);
+    window.addEventListener("dblclick", handleDoubleClick);
 
     return () => {
-      window.removeEventListener("resize", handleResize);
-      mount.removeChild(renderer.domElement);
+      window.removeEventListener("click", handleClick);
+      window.removeEventListener("dblclick", handleDoubleClick);
     };
   }, []);
 
-  return <div ref={mountRef} className="absolute inset-0 -z-10"/>;
+  // Movement & rotation
+  useFrame(() => {
+    if (!group.current) return;
+
+    const pos = group.current.position;
+    const direction = new THREE.Vector3().subVectors(targetPos.current, pos);
+    const distance = direction.length();
+
+    if (distance > 0.05) {
+      direction.normalize();
+      pos.lerp(targetPos.current, 0.05);
+
+      const targetQuaternion = new THREE.Quaternion();
+      const lookAtPos = pos.clone().add(direction);
+      group.current.lookAt(lookAtPos);
+      targetQuaternion.copy(group.current.quaternion);
+      group.current.quaternion.slerp(targetQuaternion, 0.1);
+
+      playRun();
+    } else {
+      // Idle: reset rotation
+      playNextIdle();
+      group.current.rotation.x += (defaultRotation.x - group.current.rotation.x) * 0.1;
+      group.current.rotation.y += (defaultRotation.y - group.current.rotation.y) * 0.1;
+      group.current.rotation.z += (defaultRotation.z - group.current.rotation.z) * 0.1;
+    }
+
+    group.current.scale.setScalar(modelScale.current);
+  });
+
+  // Shadows & start idle immediately
+  useEffect(() => {
+    scene.traverse((child) => {
+      if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+      }
+    });
+    playNextIdle();
+  }, [scene]);
+
+  return (
+    <group ref={group} scale={modelScale.current} position={originalPos}>
+      <primitive object={scene} />
+    </group>
+  );
+}
+
+// Smooth camera controller
+function CameraController() {
+  const { camera } = useThree();
+  const defaultPos = useRef(new THREE.Vector3(0, 3, 12));
+
+  useFrame(() => {
+    camera.position.lerp(defaultPos.current, 0.05);
+    camera.lookAt(0, 0, 0);
+  });
+
+  return null;
+}
+
+export default function HeroBackground3DFull() {
+  return (
+    <div className="fixed inset-0 z-0">
+      <Canvas camera={{ position: [0, 3, 12], fov: 20 }} style={{ pointerEvents: "auto" }}>
+        <ambientLight intensity={1} />
+        <directionalLight position={[5, 5, 5]} intensity={1} />
+        <Character />
+        <CameraController />
+      </Canvas>
+    </div>
+  );
 }
