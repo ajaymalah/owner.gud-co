@@ -1,264 +1,191 @@
 "use client";
 
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { useRef, useEffect, useState } from "react";
+import { Canvas, useFrame } from "@react-three/fiber";
 import { useGLTF, useAnimations } from "@react-three/drei";
-import { useEffect, useRef, forwardRef } from "react";
 import * as THREE from "three";
 
-// -------------------- CHARACTER STATES --------------------
-const CHARACTER_STATE = {
-  IDLE: "idle",
-  RUN: "run",
-  MELEE: "melee",
-  DEATH: "death",
-  READY: "ready",
+/* -------------------------------------------------
+   SECTION CONFIG — CONTROLS EVERYTHING
+------------------------------------------------- */
+const sectionConfig = {
+    hero: {
+        position: [0, -1, 0],
+        scale: 100,
+        rotation: [0, 0, 0],
+        animations: ["stand1", "stand2", "ready", "stand3"]
+    },
+    about: {
+        position: [-1.7, -0.8, 0],
+        scale: 90,
+        rotation: [0, Math.PI * 0.3, 0],
+        animations: ["walk","stand1"]
+    },
+    "about-1": {
+        position: [0, 0, 0],
+        scale: 80,
+        rotation: [0, Math.PI * 0.1, 0],
+        animations: ["ready","stand2"]
+    },
+    "about-2": {
+        position: [0, -2, 0],
+        scale: 150,
+        rotation: [0, -Math.PI*.3, 0],
+        animations: ["melee1", "melee2"]
+    },
+    contact: {
+        position: [0, -1, 0],
+        scale: 100,
+        rotation: [0, -Math.PI * 0.3, 0],
+        animations: ["stand1","walk"]
+    },
+    footer: {
+        position: [0, -1, 0],
+        scale: 100,
+        rotation: [0, 0, 0],
+        animations: ["stand1", "stand2", "stand3"]
+    }
 };
 
-// -------------------- CHARACTER COMPONENT --------------------
-const Character = forwardRef(function Character(_, ref) {
-  const group = useRef();
-  if (ref) ref.current = group.current; // forward ref outward
+/* -------------------------------------------------
+    SECTION OBSERVER
+------------------------------------------------- */
+export function useSectionObserver(sectionIds = []) {
+    const [activeSection, setActiveSection] = useState(null);
 
-  const { scene, animations } = useGLTF("/models/char.glb");
-  const { actions } = useAnimations(animations, group);
+    useEffect(() => {
+        if (!Array.isArray(sectionIds) || sectionIds.length === 0) return;
 
-  const state = useRef(CHARACTER_STATE.IDLE);
-  const currentAction = useRef(null);
+        const observer = new IntersectionObserver(
+            entries => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        setActiveSection(entry.target.id);
+                    }
+                });
+            },
+            { threshold: 0.6 }
+        );
 
-  const idleAnimations = ["stand1", "ready", "stand2", "stand3"];
-  const meleeAnimations = ["malee1", "malee1upper", "malee2"];
+        sectionIds.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) observer.observe(el);
+        });
 
-  const idleIndex = useRef(0);
-  const meleeIndex = useRef(0);
+        return () => observer.disconnect();
+    }, []);
 
-  const modelScale = useRef(200);
-  const targetPos = useRef(new THREE.Vector3(0, -1, 0));
-  const originalPos = new THREE.Vector3(0, -1, 0);
-  const lastMoveTime = useRef(Date.now());
-  const defaultRotation = new THREE.Euler(0, 0, 0);
+    return activeSection;
+}
 
-  const idleTimeout = useRef(null);
-
-  const setState = (newState) => {
-    state.current = newState;
-  };
-
-  const { camera } = useThree();
-  const bounds = useRef({ xMin: -5, xMax: 5, yMin: -2, yMax: 2 });
-
-  // -------------------- Dynamic boundary calculation --------------------
-  const updateBounds = () => {
-    const depth = originalPos.z - camera.position.z; // distance from camera
-    const vFOV = (camera.fov * Math.PI) / 180;
-    const visibleHeight = 2 * Math.tan(vFOV / 2) * Math.abs(depth);
-    const visibleWidth = visibleHeight * camera.aspect;
-
-    const margin = 1.5; // increase margin to keep character away from edges
-    bounds.current.xMin = -visibleWidth / 2 + margin;
-    bounds.current.xMax = visibleWidth / 2 - margin;
-    bounds.current.yMin = -visibleHeight / 2 + margin;
-    bounds.current.yMax = visibleHeight / 2 - margin;
-  };
-
-  useEffect(() => {
-    updateBounds();
-    window.addEventListener("resize", updateBounds);
-    return () => window.removeEventListener("resize", updateBounds);
-  }, []);
-
-  // -------------------- Animation Switching --------------------
-  const switchAnimation = (name, { clamp = false, duration = null, onFinish } = {}) => {
+/* -------------------------------------------------
+   PLAY ANIMATIONS CLEANLY (NO OVERLAP)
+------------------------------------------------- */
+function playAnimations(animationNames, actions, cleanerRef) {
+    if (!animationNames?.length) return;
     if (!actions) return;
-    if (state.current === CHARACTER_STATE.DEATH && name !== "death") return;
-    if (currentAction.current === name) return;
 
-    if (currentAction.current && actions[currentAction.current]) {
-      actions[currentAction.current].fadeOut(0.3);
-    }
+    let index = 0;
 
-    const action = actions[name];
-    if (!action) return;
+    const playNext = () => {
+        const name = animationNames[index];
+        const action = actions[name];
 
-    action.reset().fadeIn(0.3).play();
-    action.loop = clamp ? THREE.LoopOnce : THREE.LoopRepeat;
-    currentAction.current = name;
+        if (!action) return;
 
-    if (duration) {
-      if (idleTimeout.current) clearTimeout(idleTimeout.current);
-      idleTimeout.current = setTimeout(() => onFinish && onFinish(), duration);
-    }
-  };
+        action.reset();
+        action.fadeIn(0.3);
+        action.setLoop(THREE.LoopOnce);
+        action.clampWhenFinished = true;
+        action.play();
 
-  // -------------------- Idle Cycle --------------------
-  const playNextIdle = () => {
-    if (state.current === CHARACTER_STATE.DEATH) return;
+        const duration = action.getClip().duration * 1000;
 
-    setState(CHARACTER_STATE.IDLE);
-    modelScale.current = 150;
-
-    const next = idleAnimations[idleIndex.current];
-    idleIndex.current = (idleIndex.current + 1) % idleAnimations.length;
-
-    switchAnimation(next, {
-      duration: 5000,
-      onFinish: playNextIdle,
-    });
-  };
-
-  // -------------------- Run Animation --------------------
-  const playRun = () => {
-    if (state.current === CHARACTER_STATE.DEATH) return;
-
-    if (state.current !== CHARACTER_STATE.RUN) {
-      modelScale.current = 40;
-      setState(CHARACTER_STATE.RUN);
-      switchAnimation("run");
-    }
-  };
-
-  // -------------------- Melee Attack --------------------
-  const playNextMelee = () => {
-    if (state.current === CHARACTER_STATE.DEATH) return;
-
-    setState(CHARACTER_STATE.MELEE);
-    modelScale.current = 40;
-
-    const next = meleeAnimations[meleeIndex.current];
-    meleeIndex.current = (meleeIndex.current + 1) % meleeAnimations.length;
-
-    switchAnimation(next, {
-      clamp: true,
-      duration: 5000,
-      onFinish: playNextIdle,
-    });
-  };
-
-  // -------------------- Death Animation --------------------
-  const playDeath = () => {
-    if (state.current === CHARACTER_STATE.DEATH) return;
-
-    setState(CHARACTER_STATE.DEATH);
-
-    switchAnimation("death", {
-      clamp: true,
-      duration: 5000,
-      onFinish: () => {
-        setState(CHARACTER_STATE.IDLE);
-        playNextIdle();
-      },
-    });
-  };
-
-  // -------------------- Cursor Follow --------------------
-  useEffect(() => {
-    const handleMouseMove = (e) => {
-      let x = (e.clientX / window.innerWidth) * 10 - 5;
-      let y = -(e.clientY / window.innerHeight) * 6 + 3;
-
-      // Clamp to dynamic boundaries
-      x = Math.max(bounds.current.xMin, Math.min(bounds.current.xMax, x));
-      y = Math.max(bounds.current.yMin, Math.min(bounds.current.yMax, y));
-
-      targetPos.current.set(x, y, 0);
-      lastMoveTime.current = Date.now();
+        cleanerRef.current = setTimeout(() => {
+            action.fadeOut(0.2);
+            index = (index + 1) % animationNames.length;
+            playNext();
+        }, duration);
     };
 
-    window.addEventListener("mousemove", handleMouseMove);
-    return () => window.removeEventListener("mousemove", handleMouseMove);
-  }, []);
+    playNext();
+}
 
-  // -------------------- Auto Return to Idle --------------------
-  useEffect(() => {
-    const checkIdle = () => {
-      const now = Date.now();
-      if (state.current !== CHARACTER_STATE.DEATH && now - lastMoveTime.current > 3000) {
-        const x = Math.max(bounds.current.xMin, Math.min(bounds.current.xMax, originalPos.x));
-        const y = Math.max(bounds.current.yMin, Math.min(bounds.current.yMax, originalPos.y));
-        targetPos.current.set(x, y, 0);
-      }
-      requestAnimationFrame(checkIdle);
-    };
-    checkIdle();
-  }, []);
+/* -------------------------------------------------
+   CHARACTER — SMOOTH LERP EVERYTHING
+------------------------------------------------- */
+function Character({ position, scale, rotation, animationList }) {
+    const ref = useRef();
+    const cleaner = useRef(null);
 
-  // -------------------- Click/Double-Click --------------------
-  useEffect(() => {
-    const handleClick = () => playNextMelee();
-    const handleDoubleClick = () => playDeath();
+    const { scene, animations } = useGLTF("/models/char.glb");
+    const { actions } = useAnimations(animations, ref);
 
-    window.addEventListener("click", handleClick);
-    window.addEventListener("dblclick", handleDoubleClick);
+    /* Smooth LERPing */
+    useFrame(() => {
+        if (!ref.current) return;
 
-    return () => {
-      window.removeEventListener("click", handleClick);
-      window.removeEventListener("dblclick", handleDoubleClick);
-    };
-  }, []);
+        // Smooth position
+        ref.current.position.lerp(new THREE.Vector3(...position), 0.1);
 
-  // -------------------- Movement + Animation Logic --------------------
-  useFrame(() => {
-    if (!group.current) return;
+        // Smooth scale
+        const currentScale = ref.current.scale.x;
+        const targetScale = scale;
+        const newScale = THREE.MathUtils.lerp(currentScale, targetScale, 0.1);
+        ref.current.scale.set(newScale, newScale, newScale);
 
-    const pos = group.current.position;
-    const direction = new THREE.Vector3().subVectors(targetPos.current, pos);
-    const distance = direction.length();
-
-    if (distance > 0.05) {
-      direction.normalize();
-      pos.lerp(targetPos.current, 0.05);
-
-      const targetQuaternion = new THREE.Quaternion();
-      const lookAtPos = pos.clone().add(direction);
-
-      group.current.lookAt(lookAtPos);
-      targetQuaternion.copy(group.current.quaternion);
-      group.current.quaternion.slerp(targetQuaternion, 0.1);
-
-      playRun();
-    } else {
-      if (state.current !== CHARACTER_STATE.IDLE) {
-        playNextIdle();
-      }
-
-      group.current.rotation.x += (defaultRotation.x - group.current.rotation.x) * 0.1;
-      group.current.rotation.y += (defaultRotation.y - group.current.rotation.y) * 0.1;
-      group.current.rotation.z += (defaultRotation.z - group.current.rotation.z) * 0.1;
-    }
-
-    group.current.scale.setScalar(modelScale.current);
-  });
-
-  // -------------------- Shadows + Start Idle --------------------
-  useEffect(() => {
-    scene.traverse((child) => {
-      if (child.isMesh) {
-        child.castShadow = true;
-        child.receiveShadow = true;
-      }
+        // Smooth rotation
+        ref.current.rotation.x = THREE.MathUtils.lerp(ref.current.rotation.x, rotation[0], 0.1);
+        ref.current.rotation.y = THREE.MathUtils.lerp(ref.current.rotation.y, rotation[1], 0.1);
+        ref.current.rotation.z = THREE.MathUtils.lerp(ref.current.rotation.z, rotation[2], 0.1);
     });
 
-    playNextIdle();
-  }, [scene]);
+    /* Animations handler */
+    useEffect(() => {
+        if (!animations.length || !animationList?.length) return;
 
-  return (
-    <group ref={group} position={originalPos} scale={modelScale.current}>
-      <primitive object={scene} />
-    </group>
-  );
-});
+        if (cleaner.current) clearTimeout(cleaner.current);
 
-// -------------------- SCENE --------------------
+        playAnimations(animationList, actions, cleaner);
+
+        return () => clearTimeout(cleaner.current);
+    }, [animationList, actions]);
+
+    return (
+        <group ref={ref}>
+            <primitive object={scene} />
+        </group>
+    );
+}
+
+/* -------------------------------------------------
+   MAIN SCENE — Controls Character Based on Section
+------------------------------------------------- */
 export default function HeroBackground3DFull() {
-  const heroRef = useRef();
+    const activeSection = useSectionObserver([
+        "hero",
+        "about",
+        "about-1",
+        "about-2",
+        "contact",
+        "footer"
+    ]);
 
-  return (
-    <div className="fixed inset-0 z-0">
-      <Canvas camera={{ position: [0, 3, 12], fov: 20 }} style={{ pointerEvents: "auto" }}>
-        <ambientLight intensity={1} />
-        <directionalLight position={[5, 5, 5]} intensity={1} />
+    const config = sectionConfig[activeSection] ?? sectionConfig.hero;
 
-        <Character ref={heroRef} />
-      </Canvas>
-    </div>
-  );
+    return (
+        <div className="fixed inset-0 z-0 pointer-events-none">
+            <Canvas camera={{ position: [0, 0, 5], fov: 30 }}>
+                <ambientLight intensity={0.5} />
+                <directionalLight position={[5, 5, 5]} intensity={1} />
+
+                <Character
+                    position={config.position}
+                    scale={config.scale}
+                    rotation={config.rotation}
+                    animationList={config.animations}
+                />
+            </Canvas>
+        </div>
+    );
 }
