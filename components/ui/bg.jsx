@@ -25,7 +25,7 @@ const Character = forwardRef(function Character(_, ref) {
   const state = useRef(CHARACTER_STATE.IDLE);
   const currentAction = useRef(null);
 
-  const idleAnimations = ["stand1", "stand2", "stand3"];
+  const idleAnimations = ["stand1", "ready", "stand2", "stand3"];
   const meleeAnimations = ["malee1", "malee1upper", "malee2"];
 
   const idleIndex = useRef(0);
@@ -42,6 +42,29 @@ const Character = forwardRef(function Character(_, ref) {
   const setState = (newState) => {
     state.current = newState;
   };
+
+  const { camera } = useThree();
+  const bounds = useRef({ xMin: -5, xMax: 5, yMin: -2, yMax: 2 });
+
+  // -------------------- Dynamic boundary calculation --------------------
+  const updateBounds = () => {
+    const depth = originalPos.z - camera.position.z; // distance from camera
+    const vFOV = (camera.fov * Math.PI) / 180;
+    const visibleHeight = 2 * Math.tan(vFOV / 2) * Math.abs(depth);
+    const visibleWidth = visibleHeight * camera.aspect;
+
+    const margin = 1.5; // increase margin to keep character away from edges
+    bounds.current.xMin = -visibleWidth / 2 + margin;
+    bounds.current.xMax = visibleWidth / 2 - margin;
+    bounds.current.yMin = -visibleHeight / 2 + margin;
+    bounds.current.yMax = visibleHeight / 2 - margin;
+  };
+
+  useEffect(() => {
+    updateBounds();
+    window.addEventListener("resize", updateBounds);
+    return () => window.removeEventListener("resize", updateBounds);
+  }, []);
 
   // -------------------- Animation Switching --------------------
   const switchAnimation = (name, { clamp = false, duration = null, onFinish } = {}) => {
@@ -129,10 +152,14 @@ const Character = forwardRef(function Character(_, ref) {
   // -------------------- Cursor Follow --------------------
   useEffect(() => {
     const handleMouseMove = (e) => {
-      const x = (e.clientX / window.innerWidth) * 10 - 5;
-      const y = -(e.clientY / window.innerHeight) * 6 + 3;
+      let x = (e.clientX / window.innerWidth) * 10 - 5;
+      let y = -(e.clientY / window.innerHeight) * 6 + 3;
 
-      targetPos.current.set(x, -1 + y, 0);
+      // Clamp to dynamic boundaries
+      x = Math.max(bounds.current.xMin, Math.min(bounds.current.xMax, x));
+      y = Math.max(bounds.current.yMin, Math.min(bounds.current.yMax, y));
+
+      targetPos.current.set(x, y, 0);
       lastMoveTime.current = Date.now();
     };
 
@@ -145,7 +172,9 @@ const Character = forwardRef(function Character(_, ref) {
     const checkIdle = () => {
       const now = Date.now();
       if (state.current !== CHARACTER_STATE.DEATH && now - lastMoveTime.current > 3000) {
-        targetPos.current.copy(originalPos);
+        const x = Math.max(bounds.current.xMin, Math.min(bounds.current.xMax, originalPos.x));
+        const y = Math.max(bounds.current.yMin, Math.min(bounds.current.yMax, originalPos.y));
+        targetPos.current.set(x, y, 0);
       }
       requestAnimationFrame(checkIdle);
     };
@@ -218,27 +247,6 @@ const Character = forwardRef(function Character(_, ref) {
   );
 });
 
-// -------------------- CINEMATIC CAMERA --------------------
-function CinematicCamera({ targetRef }) {
-  const { camera } = useThree();
-  const offset = new THREE.Vector3(0, 3, 12);
-  const lookAhead = new THREE.Vector3(0, 1, 0);
-
-  useFrame(() => {
-    if (!targetRef.current) return;
-
-    const charPos = targetRef.current.position.clone();
-    const desiredPos = charPos.clone().add(offset);
-
-    camera.position.lerp(desiredPos, 0.05);
-
-    const lookTarget = charPos.clone().add(lookAhead);
-    camera.lookAt(lookTarget);
-  });
-
-  return null;
-}
-
 // -------------------- SCENE --------------------
 export default function HeroBackground3DFull() {
   const heroRef = useRef();
@@ -250,7 +258,6 @@ export default function HeroBackground3DFull() {
         <directionalLight position={[5, 5, 5]} intensity={1} />
 
         <Character ref={heroRef} />
-        <CinematicCamera targetRef={heroRef} />
       </Canvas>
     </div>
   );
